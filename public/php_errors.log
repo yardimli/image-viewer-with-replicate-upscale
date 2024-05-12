@@ -1,0 +1,1 @@
+[12-May-2024 19:53:10 UTC] PHP Fatal error:  Cannot use Intervention\Image\Laravel\Facades\Image as Image because the name is already in use in C:\Users\ekim\Documents\GitHub\image-viewer-with-replicate-upscale\app\Http\Controllers\ImageController.php on line 8
