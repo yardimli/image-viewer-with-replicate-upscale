@@ -17,7 +17,9 @@
 	{
 		public function index()
 		{
-			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
+			//get images from latest to oldest
+			$images = MyImage::latest()->paginate(20);
+//			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
 
 			foreach ($images as $image) {
 				// Check if upscale_name is null but upscale_result has a prediction ID
