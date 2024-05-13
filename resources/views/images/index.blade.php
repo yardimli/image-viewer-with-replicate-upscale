@@ -21,7 +21,7 @@
 						<div class="card-body">
 							<h6 class="card-title"></h6>
 							<img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}"
-							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 700]) }}"
+							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 900]) }}"
 							     class="img-fluid mb-2" alt="{{ $image->notes }}" style="width: 100%; min-height: 200px;">
 							
 							<p class="card-text">
