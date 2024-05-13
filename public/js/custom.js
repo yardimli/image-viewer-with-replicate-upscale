@@ -18,6 +18,7 @@ $(document).ready(function () {
 	$('.upscale-image').click(function () {
 		var imageId = $(this).data('image-id');
 		var imageUrl = $(this).data('image-url');
+		$('#upscale_result_' + imageId).html('Starting Upscaling... ');
 		$.ajax({
 			url: '/images/' + imageId + '/upscale',
 			method: 'POST',
@@ -26,8 +27,33 @@ $(document).ready(function () {
 				"image_url": imageUrl
 			},
 			success: function (response) {
-				alert('Image upscaled successfully!');
+				$('#upscale_result_' + imageId).html('Upscaling in progress... ');
 				console.log(response.upscale_result); // You might want to do something with the result
+				// Start polling for status
+				var checkStatus = function() {
+					$.ajax({
+						url: '/images/' + imageId + '/upscale-status/' + response.prediction_id,
+						method: 'GET',
+						success: function(statusResponse) {
+							if (statusResponse.message === 'Image upscaled successfully.') {
+								// alert('Upscaling Complete!');
+								clearInterval(statusInterval); // Stop polling
+								// Update the UI here, e.g., displaying the upscaled image link
+								$('#upscale_result_' + imageId).html('<a href="' + statusResponse.upscale_result + '" target="_blank">View Upscaled Image</a>');
+							} else if (statusResponse.message === 'Upscale in progress.') {
+								$('#upscale_result_' + imageId).html('Upscaling in progress... '+statusResponse.status);
+								
+							}
+							else if (statusResponse.message === 'Image upscale failed.') {
+								alert('Upscaling Failed');
+								clearInterval(statusInterval); // Stop polling
+							}
+						}
+					});
+				};
+				
+				var statusInterval = setInterval(checkStatus, 5000);
+				
 			}
 		});
 	});
@@ -85,7 +111,7 @@ $(document).ready(function () {
 			if (!isHoveringImage) {
 				$('#floating-image-container').hide();
 			}
-		}, 500); // Delay to allow for quick mouse movement between elements
+		}, 200); // Delay to allow for quick mouse movement between elements
 	});
 	
 	$('#floating-image-container').mouseenter(function () {
@@ -113,6 +139,12 @@ $(document).ready(function () {
 				top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
 			});
 		}
+	});
+	
+	//hide the floating image when user scrolls
+	$(window).scroll(function () {
+		$('#floating-image-container').hide();
+		isHoveringImage = false;
 	});
 	
 });

@@ -1362,3 +1362,256 @@ $('.upscale-image').click(function () {
 Remember to replace `csrf_token` with `$('meta[name="csrf-token"]').attr('content')` if you haven't defined `csrf_token` variable elsewhere in your JavaScript code.
 
 This setup should provide you with a basic implementation of the "Upscale" function using the Replicate API. Keep in mind, you might need to adjust the implementation based on the actual response structure of the Replicate API and how you wish to store or display the upscale results.
+--------------------------------
+that didnt exactly work. I've changed the last bit to
+
+$body = $response->getBody();
+$content = $body->getContents();
+
+// Assuming the response has a result URL or some indication of the upscale result
+$my_image->upscale_result = $content ?? '{"result":"Error or no result"}';
+$my_image->save();
+
+return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' =>  json_decode($my_image->upscale_result)]);
+--------------------------------
+the result is a json like:
+
+{
+        "id": "44sdyf5y41rgm0cfe62v83kyym",
+        "model": "batouresearch\/high-resolution-controlnet-tile",
+        "version": "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
+        "input": {
+            "creativity": 0.3,
+            "guidance_scale": 5,
+            "hdr": 0.2,
+            "image": "https:\/\/sdxl.albumcoverzone.com\/storage\/images\/output_Top\/bodybuilderVampirefangsshotgunactingsuperiorCleareveningwithmeteorshowerColdColorPaletteBitter_1715343081_28_2 _Top_3.png",
+            "negative_prompt": "",
+            "prompt": "4k, enhance",
+            "resemblance": 1
+        },
+        "logs": "",
+        "error": null,
+        "status": "starting",
+        "created_at": "2024-05-13T10:35:41.472Z",
+        "urls": {
+            "cancel": "https:\/\/api.replicate.com\/v1\/predictions\/44sdyf5y41rgm0cfe62v83kyym\/cancel",
+            "get": "https:\/\/api.replicate.com\/v1\/predictions\/44sdyf5y41rgm0cfe62v83kyym"
+        }
+    }
+
+add a timer to the page that will check the status of the upscale every 5 seconds and update the page with the result when it's done download the image put it into the storage/app/public/upscaled with the table id as filename and display a link to the image in the upscale_result field. Add a div upscale_result to the cards.  Also update the table field upscale_name with the saved image name.
+--------------------------------
+Given the JSON result structure and the requirement to check the upscale status every 5 seconds, we'll update the flow to handle asynchronous processing of the image upscale. Here's how you can implement these changes:
+
+### 1. Update the Controller Method for Upscaling
+
+Modify the `upscaleImage` method to initiate the upscaling process and poll for completion. Since Laravel doesn't support long-lived request handling well (due to the risk of hitting a timeout), we'll start the process and rely on the frontend to poll for completion.
+
+```php
+use Illuminate\Support\Facades\Http;
+
+public function upscaleImage(Request $request, MyImage $my_image)
+{
+    // Start the upscale process
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+        'Content-Type' => 'application/json',
+    ])->post('https://api.replicate.com/v1/predictions', [
+        "version" => "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
+        "input" => [
+            "hdr" => 0.7,
+            "image" => $request->image_url,
+            "prompt" => "4k, enhance",
+            "creativity" => 0.75,
+            "resemblance" => 1,
+            "guidance_scale" => 5,
+            "negative_prompt" => ""
+        ]
+    ]);
+
+    $body = $response->json();
+
+    // Store the initial response which includes the status URL
+    $my_image->upscale_result = json_encode($body);
+    $my_image->save();
+
+    // Return the prediction ID and status URL to the frontend for polling
+    return response()->json([
+        'message' => 'Upscale process started successfully.',
+        'prediction_id' => $body['id'] ?? null,
+        'status_url' => $body['urls']['get'] ?? null,
+    ]);
+}
+```
+
+### 2. Add a Route for Fetching Upscale Status
+
+You'll need a route and controller method to check the status of the upscaling process:
+
+```php
+Route::get('/images/{my_image}/upscale-status/{prediction_id}', [MyImageController::class, 'checkUpscaleStatus'])->name('image.upscale.status');
+```
+
+### 3. Implement the Status Check Method
+
+This method will poll the status of the upscaling process and, once completed, download and save the upscaled image.
+
+```php
+public function checkUpscaleStatus(Request $request, MyImage $my_image, $prediction_id)
+{
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+    ])->get("https://api.replicate.com/v1/predictions/{$prediction_id}");
+
+    $body = $response->json();
+
+    if ($body['status'] === 'succeeded') {
+        $upscaledImageUrl = $body['output']['image']; // Assuming this is the correct path to the output image URL
+        $imageName = "{$my_image->id}_upscaled.jpg";
+        $storagePath = "public/upscaled/{$imageName}";
+
+        // Download and save the file
+        $contents = file_get_contents($upscaledImageUrl);
+        Storage::put($storagePath, $contents);
+
+        // Update database with final upscale result and name
+        $my_image->upscale_result = $imageName;
+        $my_image->upscale_name = $imageName; // Assuming you want to save the image name here as well
+        $my_image->save();
+
+        return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => asset("storage/upscaled/{$imageName}")]);
+    } else if ($body['status'] === 'failed') {
+        return response()->json(['message' => 'Image upscale failed.', 'error' => $body['error']]);
+    }
+
+    // If the status is neither succeeded nor failed, it's still in progress
+    return response()->json(['message' => 'Upscale in progress', 'status' => $body['status']]);
+}
+```
+
+### 4. Update the Frontend to Poll the Status
+
+Modify your AJAX call to start polling for the status of the upscale process every 5 seconds after initiating the upscale. Use the returned `status_url` for these checks.
+
+```javascript
+// After successfully starting the upscale process
+$.ajax({
+    url: '/images/' + imageId + '/upscale',
+    method: 'POST',
+    data: {
+        "_token": csrf_token,
+        "image_url": imageUrl
+    },
+    success: function (response) {
+        // Start polling for status
+        var checkStatus = function() {
+            $.ajax({
+                url: '/images/' + imageId + '/upscale-status/' + response.prediction_id,
+                method: 'GET',
+                success: function(statusResponse) {
+                    if (statusResponse.message === 'Image upscaled successfully.') {
+                        alert('Upscaling Complete!');
+                        clearInterval(statusInterval); // Stop polling
+                        // Update the UI here, e.g., displaying the upscaled image link
+                        $('#upscale_result_' + imageId).html('<a href="' + statusResponse.upscale_result + '">View Upscaled Image</a>');
+                    } else if (statusResponse.message === 'Image upscale failed.') {
+                        alert('Upscaling Failed');
+                        clearInterval(statusInterval); // Stop polling
+                    }
+                }
+            });
+        };
+
+        var statusInterval = setInterval(checkStatus, 5000);
+    }
+});
+```
+
+With this implementation, your application will start the upscale process, poll for its completion, and upon success, save the upscaled image, update the database, and notify the user. Ensure that the paths, URLs, and JSON response handling are adjusted as needed based on the exact structure of the API responses and your application's directory structure.
+--------------------------------
+well it forgot to add
+<div id="upscale_result_{{$image->id}}"></div>
+to the card div, so i'll add that, and add target="_blank" to the link.
+--------------------------------
+when the index blade file loads if upscale_name is not blank load the url link into the upscale_result div, if upscale_name is null but upscale_result has the request then call the replicate api and update the result if image is ready, do this in the controller before loading the blade file.
+--------------------------------
+To implement the functionality where the index view loads with the appropriate `upscale_result` or triggers an update via the Replicate API if necessary, you need to adjust your `index` method in the `MyImageController`. This involves checking each image's `upscale_name` and `upscale_result` before passing data to the view. If `upscale_name` is `null` but `upscale_result` has a pending request, the method should call the Replicate API to check the status and update the result accordingly.
+
+### Step 1: Update the Index Method in MyImageController
+
+```php
+use Illuminate\Support\Facades\Http;
+
+public function index()
+{
+    $images = MyImage::paginate(20); // Adjust the number of items per page as needed
+
+    foreach ($images as $image) {
+        // Check if upscale_name is null but upscale_result has a prediction ID
+        if (is_null($image->upscale_name) && !empty($image->upscale_result)) {
+            $upscaleData = json_decode($image->upscale_result, true);
+            $predictionId = $upscaleData['id'] ?? null;
+            if ($predictionId) {
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+                ])->get("https://api.replicate.com/v1/predictions/{$predictionId}");
+
+                $body = $response->json();
+
+                // Check if the status is succeeded and update accordingly
+                if ($body['status'] === 'succeeded') {
+                    $upscaledImageUrl = $body['output']['image']; // Adjust based on actual API response
+                    $imageName = "{$image->id}_upscaled.jpg";
+                    $storagePath = "public/upscaled/{$imageName}";
+
+                    // Download and save the file
+                    $contents = file_get_contents($upscaledImageUrl);
+                    Storage::put($storagePath, $contents);
+
+                    // Update database with final upscale result and name
+                    $image->upscale_result = json_encode(['url' => asset("storage/upscaled/{$imageName}")]);
+                    $image->upscale_name = $imageName;
+                    $image->save();
+                } elseif ($body['status'] === 'failed') {
+                    // Handle failure (optional)
+                    $image->upscale_result = 'Upscaling failed.';
+                    $image->save();
+                }
+                // In-progress status will just leave the record as is
+            }
+        }
+    }
+
+    return view('images.index', compact('images'));
+}
+```
+
+### Step 2: Display the Upscale Result in the View
+
+In your Blade view, you need to conditionally display the `upscale_result` if it's available.
+
+```blade
+@foreach($images as $image)
+    <div class="col-md-3 mb-3">
+        <!-- Existing content -->
+
+        <div class="card-footer">
+            @if(!empty($image->upscale_name))
+                @php
+                $upscaleResultData = json_decode($image->upscale_result, true);
+                $upscaleUrl = $upscaleResultData['url'] ?? '#';
+                @endphp
+                <div id="upscale_result_{{ $image->id }}">
+                    <a href="{{ $upscaleUrl }}" target="_blank">View Upscaled Image</a>
+                </div>
+            @else
+                <div id="upscale_result_{{ $image->id }}">Upscaling not started or in progress.</div>
+            @endif
+        </div>
+    </div>
+@endforeach
+```
+
+This approach ensures that your gallery displays the upscaled images if available or indicates that upscaling is in progress. It also checks the status of any pending upscale operations when the page is loaded, updating the database and view accordingly.
+
+**Note**: Be cautious with making external API calls within a loop, especially for a potentially large number of items, as it can significantly impact the performance of your page load. Consider implementing a queue-based approach for handling upscale checks and updates for a more scalable solution.

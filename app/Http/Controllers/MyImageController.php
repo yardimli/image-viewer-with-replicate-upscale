@@ -5,6 +5,8 @@
 	use App\Models\MyImage;
 	use Illuminate\Http\Request;
 	use Illuminate\Support\Facades\File;
+	use Illuminate\Support\Facades\Http;
+	use Illuminate\Support\Facades\Log;
 	use Illuminate\Support\Facades\Storage;
 	use Intervention\Image\Drivers\Gd\Driver;
 	use Intervention\Image\ImageManager;
@@ -16,6 +18,46 @@
 		public function index()
 		{
 			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
+
+			foreach ($images as $image) {
+				// Check if upscale_name is null but upscale_result has a prediction ID
+				if (empty($image->upscale_name) && !empty($image->upscale_result)) {
+					$upscaleData = json_decode($image->upscale_result, true);
+					$predictionId = $upscaleData['id'] ?? null;
+					if ($predictionId) {
+						$response = Http::withHeaders([
+							'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+						])->get("https://api.replicate.com/v1/predictions/{$predictionId}");
+
+						$body = $response->json();
+						Log::info('Upscale Status Check in Index');
+						Log::info($body);
+
+						// Check if the status is succeeded and update accordingly
+						if ($body['status'] === 'succeeded') {
+							$upscaledImageUrl = $body['output'][0]; // Adjust based on actual API response
+							$imageName = "{$image->id}_upscaled.jpg";
+							$storagePath = "public/upscaled/{$imageName}";
+
+							// Download and save the file
+							$contents = file_get_contents($upscaledImageUrl);
+							Storage::put($storagePath, $contents);
+
+							// Update database with final upscale result and name
+							$image->upscale_result = json_encode($body);
+							$image->upscale_name = $imageName;
+							$image->save();
+						} elseif ($body['status'] === 'failed') {
+							// Handle failure (optional)
+							$image->upscale_name = 'Failed, check logs or database table, try again';
+							$image->upscale_result = json_encode($body);
+							$image->save();
+						}
+						// In-progress status will just leave the record as is
+					}
+				}
+			}
+
 			return view('images.index', compact('images'));
 		}
 
@@ -39,7 +81,7 @@
 							'image_name' => $fileName,
 							'folder' => $relativeFolderPath,
 							'notes' => '',
-							'upscale_name' => $fileName,
+							'upscale_name' => '',
 						]);
 					}
 				}
@@ -99,12 +141,50 @@
 				]
 			]);
 
-			$body = json_decode((string) $response->getBody(), true);
+			$body = $response->getBody();
+			$content = $body->getContents();
+
 
 			// Assuming the response has a result URL or some indication of the upscale result
-			$my_image->upscale_result = $body['result'] ?? 'Error or no result';
+			$my_image->upscale_result = $content ?? '{"result":"Error or no result"}';
 			$my_image->save();
 
-			return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => $my_image->upscale_result]);
+			$json_result = json_decode($my_image->upscale_result, true);
+			Log::info($my_image->upscale_result);
+
+			return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => $json_result, 'prediction_id' => $json_result['id'] ?? null, 'status_url' => $json_result['urls']['get'] ?? null]);
+		}
+
+		public function checkUpscaleStatus(Request $request, MyImage $my_image, $prediction_id)
+		{
+			$response = Http::withHeaders([
+				'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+				'Content-Type' => 'application/json',
+			])->get("https://api.replicate.com/v1/predictions/{$prediction_id}");
+
+			$body = $response->json();
+			Log::info($body);
+
+			if ($body['status'] === 'succeeded') {
+				$upscaledImageUrl = $body['output'][0]; // Assuming this is the correct path to the output image URL
+				$imageName = "{$my_image->id}_upscaled.jpg";
+				$storagePath = "public/upscaled/{$imageName}";
+
+				// Download and save the file
+				$contents = file_get_contents($upscaledImageUrl);
+				Storage::put($storagePath, $contents);
+
+				// Update database with final upscale result and name
+				$my_image->upscale_result = json_encode($body);
+				$my_image->upscale_name = $imageName; // Assuming you want to save the image name here as well
+				$my_image->save();
+
+				return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => asset("storage/upscaled/{$imageName}")]);
+			} else if ($body['status'] === 'failed') {
+				return response()->json(['message' => 'Image upscale failed.', 'error' => $body['error']]);
+			}
+
+			// If the status is neither succeeded nor failed, it's still in progress
+			return response()->json(['message' => 'Upscale in progress.', 'status' => $body['logs']]);
 		}
 	}

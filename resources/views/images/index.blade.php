@@ -25,9 +25,14 @@
 							<p class="card-text">
 								<input type="text" class="form-control image-note" data-image-id="{{ $image->id }}"
 								       value="{{ $image->notes }}">
+							<div class="upscale-result" id="upscale_result_{{ $image->id }}">
+								@if(!empty($image->upscale_name))
+									<a href="{{ asset('storage/upscaled/'.$image->upscale_name) }}" target="_blank">View Upscaled Image</a>
+								@endif
+							</div>
 							</p>
 							<button class="btn btn-success update-note" data-image-id="{{ $image->id }}">Update Notes</button>
-							<button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ asset('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button>
+							<button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button>
 						</div>
 					</div>
 				</div>
