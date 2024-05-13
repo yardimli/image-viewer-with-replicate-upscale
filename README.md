@@ -3,6 +3,8 @@
 Code along with chatgpt log in gpt-log.txt. 
 
 ### How to run
+```composer install```
+
 ```php artisan migrate```
 
 ```php artisan key:generate```

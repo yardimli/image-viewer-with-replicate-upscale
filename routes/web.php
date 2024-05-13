@@ -21,4 +21,5 @@
 
 	Route::post('/images/{my_image}/update-notes', [App\Http\Controllers\MyImageController::class, 'updateNotes']);
 	Route::get('/images/display/{my_image}/{width?}', [App\Http\Controllers\MyImageController::class, 'displayImage'])->name('image.display');
+	Route::post('/images/{my_image}/upscale', [MyImageController::class, 'upscaleImage'])->name('image.upscale');
 

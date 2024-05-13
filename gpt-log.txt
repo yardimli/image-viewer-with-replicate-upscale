@@ -1084,3 +1084,281 @@ By implementing these adjustments, the floating image will remain visible when t
 --------------------------------
 that didnt work very well so I'll just modify the code so it will work better instead of having chatgpt fix it.
 --------------------------------
+
+<?php
+
+	namespace App\Http\Controllers;
+
+	use App\Models\MyImage;
+	use Illuminate\Http\Request;
+	use Illuminate\Support\Facades\File;
+	use Illuminate\Support\Facades\Storage;
+	use Intervention\Image\Drivers\Gd\Driver;
+	use Intervention\Image\ImageManager;
+	use Intervention\Image\Laravel\Facades\Image;
+
+	class MyImageController extends Controller
+	{
+		public function index()
+		{
+			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
+			return view('images.index', compact('images'));
+		}
+
+		public function scanFolder()
+		{
+			$directory = 'public/images'; // Base directory
+			$files = Storage::allFiles($directory); // Recursively get all files
+
+			foreach ($files as $file) {
+				// Filter only JPG and PNG files
+				if (preg_match('/\.(jpg|jpeg|png)$/i', $file)) {
+					$fileName = basename($file);
+					$relativeFolderPath = dirname($file);
+					$relativeFolderPath = str_replace($directory . '/', '', $relativeFolderPath); // Get relative path to the base directory
+
+					// Check if the file is already in the database
+					$exists = MyImage::where('image_name', $fileName)->where('folder', $relativeFolderPath)->exists();
+					if (!$exists) {
+						// Add new file to the database
+						MyImage::create([
+							'image_name' => $fileName,
+							'folder' => $relativeFolderPath,
+							'notes' => '',
+							'upscale_name' => $fileName,
+						]);
+					}
+				}
+			}
+
+			// Redirect back to the images index page
+			return redirect()->route('images.index');
+		}
+
+
+		public function updateNotes(Request $request, MyImage $my_image)
+		{
+			$my_image->notes = $request->notes;
+			$my_image->save();
+
+			return response()->json(['message' => 'Notes updated successfully.']);
+		}
+
+		public function displayImage(MyImage $my_image, $width = 300)
+		{
+			$path = storage_path('app/public/images/' . $my_image->folder . '/' . $my_image->image_name);
+			if (!File::exists($path)) {
+				abort(404);
+			}
+
+			$file = File::get($path);
+			$type = File::mimeType($path);
+
+			$manager = new ImageManager(Driver::class);
+			$image = $manager->read($file);
+			$image->scaleDown($width, $width);
+			$encoded = $image->encodeByMediaType('image/jpeg', progressive: true, quality: 98);
+
+			return response($encoded)->header('Content-Type', 'image/jpeg');
+		}
+	}
+
+
+
+@extends('layouts.app')
+
+@section('content')
+	<div id="floating-image-container" style="display: none; position: absolute; z-index: 1050;">
+		<img id="floating-image" src="" alt="Hovered Image" style="width: 700px; height:700px; max-width: 700px; max-height: 700px;">
+	</div>
+
+	<div class="container">
+		<h1 class="text-center mb-4">Image Gallery</h1>
+		<a href="{{ route('images.scan') }}" class="btn btn-primary">Rescan Storage Folder</a>
+		<div class="row mt-4">
+			@foreach($images as $image)
+				<div class="col-md-3 mb-3">
+					<div class="card">
+						<div class="card-header">
+							{{ $image->folder }} <br>
+							{{ $image->image_name }}
+						</div>
+						<div class="card-body">
+							<h6 class="card-title"></h6>
+							<img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}"
+							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 700]) }}"
+							     class="img-fluid mb-2" alt="{{ $image->notes }}" style="width: 100%; min-height: 200px;">
+
+							<p class="card-text">
+								<input type="text" class="form-control image-note" data-image-id="{{ $image->id }}"
+								       value="{{ $image->notes }}">
+							</p>
+							<button class="btn btn-success update-note" data-image-id="{{ $image->id }}">Update Notes</button>
+						</div>
+					</div>
+				</div>
+			@endforeach
+		</div>
+		<!-- Pagination -->
+		<div class="row">
+			<div class="col-12">
+				{{ $images->links('pagination::bootstrap-5')  }}
+			</div>
+		</div>
+	</div>
+@endsection
+
+
+$(document).ready(function () {
+	$('.update-note').click(function () {
+		var imageId = $(this).data('image-id');
+		var notes = $(this).prev('.card-text').find('.image-note').val();
+		$.ajax({
+			url: '/images/' + imageId + '/update-notes',
+			method: 'POST',
+			data: {
+				"_token": csrf_token,
+				notes: notes
+			},
+			success: function (response) {
+				alert('Notes updated successfully!');
+			}
+		});
+	});
+
+
+
+i want to add a button that is called upscale, it should do an AJAX call to replicate using the following curl request with the image url, i also need to add a upscale_result mediumtext to the my_images table.
+
+curl --silent --show-error https://api.replicate.com/v1/predictions \
+	--request POST \
+	--header "Authorization: Bearer $REPLICATE_API_TOKEN" \
+	--header "Content-Type: application/json" \
+	--data @- <<-EOM
+{
+	"version": "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
+	"input": {
+      "hdr": 0.7,
+      "image": "https://replicate.delivery/pbxt/K2gjWl0c5hGCKrNBj2xyJpt7QhOpwNpYXfJ4pnJS56RoN1KK/4904b1be-61dc-4ef0-916b-2f33b2ca953a.webp",
+      "prompt": "4k, enhance",
+      "creativity": 0.75,
+      "resemblance": 1,
+      "guidance_scale": 5,
+      "negative_prompt": ""
+	}
+}
+
+--------------------------------
+To incorporate the "Upscale" functionality into your existing Laravel application, you'll need to follow a series of steps. These include modifying your database, updating the `MyImage` model, creating a new route and controller method for the upscale operation, and finally, adding the necessary frontend code to initiate the upscale process via AJAX.
+
+### 1. Update the Database
+
+First, you need to add a new column `upscale_result` to your `my_images` table. You can do this by creating a new migration.
+
+Run the following command to create a migration:
+```bash
+php artisan make:migration add_upscale_result_to_my_images_table --table=my_images
+```
+
+Then, in the generated migration file, add the following:
+```php
+Schema::table('my_images', function (Blueprint $table) {
+    $table->mediumText('upscale_result')->nullable();
+});
+```
+
+Don't forget to run the migration:
+```bash
+php artisan migrate
+```
+
+### 2. Update the MyImage Model
+
+Ensure your `MyImage` model can handle the new `upscale_result` attribute by adding it to the `$fillable` array:
+```php
+protected $fillable = ['image_name', 'folder', 'notes', 'upscale_name', 'upscale_result'];
+```
+
+### 3. Create Upscale Functionality in Your Controller
+
+Add a new method in your `MyImageController` for handling the upscale operation.
+
+First, ensure you have GuzzleHTTP installed to make HTTP requests:
+```bash
+composer require guzzlehttp/guzzle
+```
+
+Then, add the following method to your controller:
+```php
+use GuzzleHttp\Client;
+
+public function upscaleImage(Request $request, MyImage $my_image)
+{
+    $client = new Client();
+    $response = $client->post('https://api.replicate.com/v1/predictions', [
+        'headers' => [
+            'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+            'Content-Type' => 'application/json',
+        ],
+        'json' => [
+            "version" => "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
+            "input" => [
+                "hdr" => 0.7,
+                "image" => $request->image_url,
+                "prompt" => "4k, enhance",
+                "creativity" => 0.75,
+                "resemblance" => 1,
+                "guidance_scale" => 5,
+                "negative_prompt" => ""
+            ]
+        ]
+    ]);
+
+    $body = json_decode((string) $response->getBody(), true);
+
+    // Assuming the response has a result URL or some indication of the upscale result
+    $my_image->upscale_result = $body['result'] ?? 'Error or no result';
+    $my_image->save();
+
+    return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => $my_image->upscale_result]);
+}
+```
+
+### 4. Add a Route
+
+Add a route for your new upscale functionality in your `web.php`:
+```php
+Route::post('/images/{my_image}/upscale', [MyImageController::class, 'upscaleImage'])->name('image.upscale');
+```
+
+### 5. Update Your Blade File
+
+In your Blade file, add a new "Upscale" button next to each image and handle the AJAX request:
+
+```html
+<button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ asset('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button>
+```
+
+Then, add the JavaScript needed to handle the button click:
+```javascript
+$('.upscale-image').click(function () {
+    var imageId = $(this).data('image-id');
+    var imageUrl = $(this).data('image-url');
+    $.ajax({
+        url: '/images/' + imageId + '/upscale',
+        method: 'POST',
+        data: {
+            "_token": csrf_token,
+            "image_url": imageUrl
+        },
+        success: function (response) {
+            alert('Image upscaled successfully!');
+            console.log(response.upscale_result); // You might want to do something with the result
+        }
+    });
+});
+```
+
+Remember to replace `csrf_token` with `$('meta[name="csrf-token"]').attr('content')` if you haven't defined `csrf_token` variable elsewhere in your JavaScript code.
+
+This setup should provide you with a basic implementation of the "Upscale" function using the Replicate API. Keep in mind, you might need to adjust the implementation based on the actual response structure of the Replicate API and how you wish to store or display the upscale results.

@@ -9,6 +9,7 @@
 	use Intervention\Image\Drivers\Gd\Driver;
 	use Intervention\Image\ImageManager;
 	use Intervention\Image\Laravel\Facades\Image;
+	use GuzzleHttp\Client;
 
 	class MyImageController extends Controller
 	{
@@ -70,8 +71,40 @@
 			$manager = new ImageManager(Driver::class);
 			$image = $manager->read($file);
 			$image->scaleDown($width, $width);
-			$encoded = $image->encodeByMediaType('image/jpeg', progressive: true, quality: 90);
+			$encoded = $image->encodeByMediaType('image/jpeg', progressive: true, quality: 98);
 
 			return response($encoded)->header('Content-Type', 'image/jpeg');
+		}
+
+
+		public function upscaleImage(Request $request, MyImage $my_image)
+		{
+			$client = new Client();
+			$response = $client->post('https://api.replicate.com/v1/predictions', [
+				'headers' => [
+					'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'),
+					'Content-Type' => 'application/json',
+				],
+				'json' => [
+					"version" => "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
+					"input" => [
+						"hdr" => 0.2,
+						"image" => $request->image_url,
+						"prompt" => "4k, enhance",
+						"creativity" => 0.3,
+						"resemblance" => 1,
+						"guidance_scale" => 5,
+						"negative_prompt" => ""
+					]
+				]
+			]);
+
+			$body = json_decode((string) $response->getBody(), true);
+
+			// Assuming the response has a result URL or some indication of the upscale result
+			$my_image->upscale_result = $body['result'] ?? 'Error or no result';
+			$my_image->save();
+
+			return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => $my_image->upscale_result]);
 		}
 	}

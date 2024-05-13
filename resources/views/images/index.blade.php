@@ -2,7 +2,7 @@
 
 @section('content')
 	<div id="floating-image-container" style="display: none; position: absolute; z-index: 1050;">
-		<img id="floating-image" src="" alt="Hovered Image" style="width: 600px; height:600px; max-width: 600px; max-height: 600px;">
+		<img id="floating-image" src="" alt="Hovered Image" style="width: 700px; height:700px; max-width: 700px; max-height: 700px;">
 	</div>
 	
 	<div class="container">
@@ -19,7 +19,7 @@
 						<div class="card-body">
 							<h6 class="card-title"></h6>
 							<img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}"
-							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 600]) }}"
+							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 700]) }}"
 							     class="img-fluid mb-2" alt="{{ $image->notes }}" style="width: 100%; min-height: 200px;">
 							
 							<p class="card-text">
@@ -27,6 +27,7 @@
 								       value="{{ $image->notes }}">
 							</p>
 							<button class="btn btn-success update-note" data-image-id="{{ $image->id }}">Update Notes</button>
+							<button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ asset('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button>
 						</div>
 					</div>
 				</div>

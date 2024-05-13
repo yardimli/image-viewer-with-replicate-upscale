@@ -15,6 +15,23 @@ $(document).ready(function () {
 		});
 	});
 	
+	$('.upscale-image').click(function () {
+		var imageId = $(this).data('image-id');
+		var imageUrl = $(this).data('image-url');
+		$.ajax({
+			url: '/images/' + imageId + '/upscale',
+			method: 'POST',
+			data: {
+				"_token": csrf_token,
+				"image_url": imageUrl
+			},
+			success: function (response) {
+				alert('Image upscaled successfully!');
+				console.log(response.upscale_result); // You might want to do something with the result
+			}
+		});
+	});
+	
 	
 	var isHoveringImage = false;
 	var intervalTimer;
