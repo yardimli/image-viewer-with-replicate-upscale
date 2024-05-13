@@ -130,10 +130,12 @@
 				'json' => [
 					"version" => "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29",
 					"input" => [
-						"hdr" => 0.2,
+						"hdr" => 0.1,
 						"image" => $request->image_url,
 						"prompt" => "4k, enhance",
 						"creativity" => 0.3,
+						"guess_mode" => true,
+						"resolution" => 2560,
 						"resemblance" => 1,
 						"guidance_scale" => 5,
 						"negative_prompt" => ""
