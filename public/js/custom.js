@@ -58,93 +58,63 @@ $(document).ready(function () {
 		});
 	});
 	
-	
-	var isHoveringImage = false;
-	var intervalTimer;
-	var LeftPosition;
 	var LoadedImageSrc = '';
 	
-	$('.card img').mouseenter(function (e) {
-		if (isHoveringImage) {
-			return;
-		}
-		console.log('mouseenter');
-		clearTimeout(intervalTimer);
-		// Show the floating image with a fixed top position when hovering over the thumbnail
+	// Mouse enter event on the card image
+	$('.card img').mouseenter(function () {
 		var hoverSrc = $(this).data('hover-src');
+		var cardOffset = $(this).closest('.card').offset();
+		var cardWidth = $(this).closest('.card').outerWidth();
+		var windowWidth = $(window).width();
+		var floatingImgWidth = 700; // Assuming a fixed floating image width
+		
 		if (hoverSrc === LoadedImageSrc) {
 			return;
 		}
 		LoadedImageSrc = hoverSrc;
-		
-		var offsetX = 15; // The offset to the right of the cursor
-		leftPosition = e.pageX + offsetX;
-		var windowWidth = $(window).width();
-		
-		$('#floating-image-container').css({
-			display: 'block',
-			left: leftPosition,
-			top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
-		});
 		$('#floating-image').attr('src', '');
 		
-		$('#floating-image').attr('src', hoverSrc).on('load', function () {
-			var imageWidth = $('#floating-image-container').outerWidth();
-			
-			// Check if the floating image would go out of the viewport
-			if (leftPosition + imageWidth > windowWidth) {
-				// If it does, position it to the left of the cursor instead
-				leftPosition = e.pageX - offsetX - imageWidth;
-			}
-			
+		
+		// If there's enough space on the right side of the card, display the image there, otherwise to the left.
+		if (windowWidth - (cardOffset.left + cardWidth) > floatingImgWidth) {
+			// Display to the right
 			$('#floating-image-container').css({
-				display: 'block',
-				left: leftPosition,
-				top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
+				left: cardOffset.left + cardWidth + 10, // 10px gap from the card
+				top:  $(window).scrollTop() + 10
 			});
-		});
-	}).mouseleave(function () {
-		console.log('mouseleave');
-		// Set a timeout to hide the floating image, allows checking for hovering over the floating image
-		clearTimeout(intervalTimer);
-		intervalTimer = setTimeout(function () {
-			if (!isHoveringImage) {
-				$('#floating-image-container').hide();
+		} else {
+			// Display to the left (ensure it does not go off-screen)
+			var leftPosition = cardOffset.left - floatingImgWidth - 10; // 10px gap from the card
+			if (leftPosition < 0) {
+				leftPosition = 10; // Fallback to display it at the start of the window if it goes off-screen
 			}
-		}, 200); // Delay to allow for quick mouse movement between elements
-	});
-	
-	$('#floating-image-container').mouseenter(function () {
-		clearTimeout(intervalTimer);
-		isHoveringImage = true;
-	}).mouseleave(function () {
-		isHoveringImage = false;
-	});
-	
-	$(document).mousemove(function (e) {
-		if ($('#floating-image-container').is(':visible')) {
-			var imageWidth = $('#floating-image-container').outerWidth();
-			var windowWidth = $(window).width();
-			var offsetX = 15; // The offset to the right of the cursor
-			leftPosition = e.pageX + offsetX;
-			
-			// Check if the floating image would go out of the viewport
-			if (leftPosition + imageWidth > windowWidth) {
-				// If it does, position it to the left of the cursor instead
-				leftPosition = e.pageX - offsetX - imageWidth;
-			}
-			
 			$('#floating-image-container').css({
 				left: leftPosition,
-				top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
+				top: $(window).scrollTop() + 10
 			});
 		}
+		
+		// Set the source of the floating image and display it
+		$('#floating-image').attr('src', hoverSrc);
+		$('#floating-image-container').show();
+	}).mouseleave(function () {
+		// Hide the floating image when mouse leaves the card image
+		LoadedImageSrc = '';
+		$('#floating-image-container').hide();
+	});
+	
+	// Additional event to hide the floating image when mouse enters and leaves the floating container (for safety)
+	$('#floating-image-container').mouseenter(function () {
+		$(this).show(); // Keep showing the floating image when over it
+	}).mouseleave(function () {
+		LoadedImageSrc = '';
+		$(this).hide(); // Hide when leaving the floating image
 	});
 	
 	//hide the floating image when user scrolls
 	$(window).scroll(function () {
 		$('#floating-image-container').hide();
-		isHoveringImage = false;
+		LoadedImageSrc = '';
 	});
 	
 });

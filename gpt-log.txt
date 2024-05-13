@@ -1615,3 +1615,207 @@ In your Blade view, you need to conditionally display the `upscale_result` if it
 This approach ensures that your gallery displays the upscaled images if available or indicates that upscaling is in progress. It also checks the status of any pending upscale operations when the page is loaded, updating the database and view accordingly.
 
 **Note**: Be cautious with making external API calls within a loop, especially for a potentially large number of items, as it can significantly impact the performance of your page load. Consider implementing a queue-based approach for handling upscale checks and updates for a more scalable solution.
+--------------------------------
+
+@extends('layouts.app')
+
+@section('content')
+	<div id="floating-image-container" style="display: none; position: absolute; z-index: 1050;">
+		<img id="floating-image" src="" alt="Hovered Image" style="width: 700px; height:700px; max-width: 700px; max-height: 700px;">
+	</div>
+
+	<div class="container">
+		<h1 class="text-center mb-4">Image Gallery</h1>
+		<a href="{{ route('images.scan') }}" class="btn btn-primary">Rescan Storage Folder</a>
+		<div class="row mt-4">
+			@foreach($images as $image)
+				<div class="col-md-3 mb-3">
+					<div class="card">
+						<div class="card-header">
+							{{ $image->folder }} <br>
+							<div title="{{ $image->image_name }}" style="height: 20px; overflow: hidden; white-space: nowrap;">
+							{{ $image->image_name }}
+							</div>
+						</div>
+						<div class="card-body">
+							<h6 class="card-title"></h6>
+							<img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}"
+							     data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 700]) }}"
+							     class="img-fluid mb-2" alt="{{ $image->notes }}" style="width: 100%; min-height: 200px;">
+
+							<p class="card-text">
+								<input type="text" class="form-control image-note" data-image-id="{{ $image->id }}"
+								       value="{{ $image->notes }}">
+							<div class="upscale-result" id="upscale_result_{{ $image->id }}">
+								@if(!empty($image->upscale_name))
+									<a href="{{ asset('storage/upscaled/'.$image->upscale_name) }}" target="_blank">View Upscaled Image</a>
+								@endif
+							</div>
+							</p>
+							<button class="btn btn-success update-note" data-image-id="{{ $image->id }}">Update Notes</button>
+							<button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button>
+						</div>
+					</div>
+				</div>
+			@endforeach
+		</div>
+		<!-- Pagination -->
+		<div class="row">
+			<div class="col-12">
+				{{ $images->links('pagination::bootstrap-5')  }}
+			</div>
+		</div>
+	</div>
+@endsection
+
+
+var isHoveringImage = false;
+	var intervalTimer;
+	var LeftPosition;
+	var LoadedImageSrc = '';
+
+	$('.card img').mouseenter(function (e) {
+		if (isHoveringImage) {
+			return;
+		}
+		console.log('mouseenter');
+		clearTimeout(intervalTimer);
+		// Show the floating image with a fixed top position when hovering over the thumbnail
+		var hoverSrc = $(this).data('hover-src');
+		if (hoverSrc === LoadedImageSrc) {
+			return;
+		}
+		LoadedImageSrc = hoverSrc;
+
+		var offsetX = 15; // The offset to the right of the cursor
+		leftPosition = e.pageX + offsetX;
+		var windowWidth = $(window).width();
+
+		$('#floating-image-container').css({
+			display: 'block',
+			left: leftPosition,
+			top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
+		});
+		$('#floating-image').attr('src', '');
+
+		$('#floating-image').attr('src', hoverSrc).on('load', function () {
+			var imageWidth = $('#floating-image-container').outerWidth();
+
+			// Check if the floating image would go out of the viewport
+			if (leftPosition + imageWidth > windowWidth) {
+				// If it does, position it to the left of the cursor instead
+				leftPosition = e.pageX - offsetX - imageWidth;
+			}
+
+			$('#floating-image-container').css({
+				display: 'block',
+				left: leftPosition,
+				top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
+			});
+		});
+	}).mouseleave(function () {
+		console.log('mouseleave');
+		// Set a timeout to hide the floating image, allows checking for hovering over the floating image
+		clearTimeout(intervalTimer);
+		intervalTimer = setTimeout(function () {
+			if (!isHoveringImage) {
+				$('#floating-image-container').hide();
+			}
+		}, 200); // Delay to allow for quick mouse movement between elements
+	});
+
+	$('#floating-image-container').mouseenter(function () {
+		clearTimeout(intervalTimer);
+		isHoveringImage = true;
+	}).mouseleave(function () {
+		isHoveringImage = false;
+	});
+
+	$(document).mousemove(function (e) {
+		if ($('#floating-image-container').is(':visible')) {
+			var imageWidth = $('#floating-image-container').outerWidth();
+			var windowWidth = $(window).width();
+			var offsetX = 15; // The offset to the right of the cursor
+			leftPosition = e.pageX + offsetX;
+
+			// Check if the floating image would go out of the viewport
+			if (leftPosition + imageWidth > windowWidth) {
+				// If it does, position it to the left of the cursor instead
+				leftPosition = e.pageX - offsetX - imageWidth;
+			}
+
+			$('#floating-image-container').css({
+				left: leftPosition,
+				top: $(window).scrollTop() + 10 // Keep it fixed at the top of the viewport with a slight margin
+			});
+		}
+	});
+
+	//hide the floating image when user scrolls
+	$(window).scroll(function () {
+		$('#floating-image-container').hide();
+		isHoveringImage = false;
+	});
+
+});
+
+change this hover code, so the image will either show up to the left or right of the card. it won't follow the mouse and will disappear if the mouse leaves the card image.
+--------------------------------
+To modify the behavior of the hover functionality so that the floating image will appear to the left or right of the card and will not follow the mouse cursor, adjustments can be made to the JavaScript code. This implementation will also ensure that the floating image disappears when the mouse leaves the card image.
+
+Here's how you can adjust the existing code:
+
+```javascript
+$(document).ready(function () {
+    // Mouse enter event on the card image
+    $('.card img').mouseenter(function () {
+        var hoverSrc = $(this).data('hover-src');
+        var cardOffset = $(this).closest('.card').offset();
+        var cardWidth = $(this).closest('.card').outerWidth();
+        var windowWidth = $(window).width();
+        var floatingImgWidth = 700; // Assuming a fixed floating image width
+
+        // If there's enough space on the right side of the card, display the image there, otherwise to the left.
+        if (windowWidth - (cardOffset.left + cardWidth) > floatingImgWidth) {
+            // Display to the right
+            $('#floating-image-container').css({
+                left: cardOffset.left + cardWidth + 10, // 10px gap from the card
+                top: cardOffset.top
+            });
+        } else {
+            // Display to the left (ensure it does not go off-screen)
+            var leftPosition = cardOffset.left - floatingImgWidth - 10; // 10px gap from the card
+            if (leftPosition < 0) {
+                leftPosition = 10; // Fallback to display it at the start of the window if it goes off-screen
+            }
+            $('#floating-image-container').css({
+                left: leftPosition,
+                top: cardOffset.top
+            });
+        }
+
+        // Set the source of the floating image and display it
+        $('#floating-image').attr('src', hoverSrc);
+        $('#floating-image-container').show();
+    }).mouseleave(function () {
+        // Hide the floating image when mouse leaves the card image
+        $('#floating-image-container').hide();
+    });
+
+    // Additional event to hide the floating image when mouse enters and leaves the floating container (for safety)
+    $('#floating-image-container').mouseenter(function () {
+        $(this).show(); // Keep showing the floating image when over it
+    }).mouseleave(function () {
+        $(this).hide(); // Hide when leaving the floating image
+    });
+});
+```
+
+This code achieves the following:
+- When the mouse enters a card image, it checks whether there is enough space to display the floating image to the right of the card. If not, it attempts to display it to the left.
+- It ensures that the floating image does not follow the mouse cursor but instead appears relative to the card's position.
+- It hides the floating image when the mouse leaves the card image or the floating image itself.
+
+This setup is more static compared to the original one and ensures a more predictable placement of the floating image relative to the card.
+--------------------------------
+i'll keep the code from the original version to keep the top fixed and verify that the image has not changed before loading it.

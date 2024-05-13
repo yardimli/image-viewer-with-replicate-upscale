@@ -14,7 +14,9 @@
 					<div class="card">
 						<div class="card-header">
 							{{ $image->folder }} <br>
+							<div title="{{ $image->image_name }}" style="height: 20px; overflow: hidden; white-space: nowrap;">
 							{{ $image->image_name }}
+							</div>
 						</div>
 						<div class="card-body">
 							<h6 class="card-title"></h6>
