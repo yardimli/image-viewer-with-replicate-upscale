@@ -1819,3 +1819,195 @@ This code achieves the following:
 This setup is more static compared to the original one and ensures a more predictable placement of the floating image relative to the card.
 --------------------------------
 i'll keep the code from the original version to keep the top fixed and verify that the image has not changed before loading it.
+--------------------------------
+trying gpt-4o
+--------------------------------
+<?php namespace App\Http\Controllers; use App\Models\MyImage; use Illuminate\Http\Request; use Illuminate\Support\Facades\File; use Illuminate\Support\Facades\Http; use Illuminate\Support\Facades\Log; use Illuminate\Support\Facades\Storage; use Intervention\Image\Drivers\Gd\Driver; use Intervention\Image\ImageManager; use Intervention\Image\Laravel\Facades\Image; use GuzzleHttp\Client; class MyImageController extends Controller { public function index() { //get images order by id desc paginated $images = MyImage::orderBy('id', 'desc')->paginate(20); // $images = MyImage::paginate(20); // Adjust the number of items per page as needed foreach ($images as $image) { // Check if upscale_name is null but upscale_result has a prediction ID if (empty($image->upscale_name) && !empty($image->upscale_result)) { $upscaleData = json_decode($image->upscale_result, true); $predictionId = $upscaleData['id'] ?? null; if ($predictionId) { $response = Http::withHeaders([ 'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'), ])->get("https://api.replicate.com/v1/predictions/{$predictionId}"); $body = $response->json(); Log::info('Upscale Status Check in Index'); Log::info($body); // Check if the status is succeeded and update accordingly if ($body['status'] === 'succeeded') { $upscaledImageUrl = $body['output'][0]; // Adjust based on actual API response $imageName = "{$image->id}_upscaled.jpg"; $storagePath = "public/upscaled/{$imageName}"; // Download and save the file $contents = file_get_contents($upscaledImageUrl); Storage::put($storagePath, $contents); // Update database with final upscale result and name $image->upscale_result = json_encode($body); $image->upscale_name = $imageName; $image->save(); } elseif ($body['status'] === 'failed') { // Handle failure (optional) $image->upscale_name = 'Failed, check logs or database table, try again'; $image->upscale_result = json_encode($body); $image->save(); } // In-progress status will just leave the record as is } } } return view('images.index', compact('images')); } public function scanFolder() { $directory = 'public/images'; // Base directory $files = Storage::allFiles($directory); // Recursively get all files foreach ($files as $file) { // Filter only JPG and PNG files if (preg_match('/\.(jpg|jpeg|png)$/i', $file)) { $fileName = basename($file); $relativeFolderPath = dirname($file); $relativeFolderPath = str_replace($directory . '/', '', $relativeFolderPath); // Get relative path to the base directory // Check if the file is already in the database $exists = MyImage::where('image_name', $fileName)->where('folder', $relativeFolderPath)->exists(); if (!$exists) { // Add new file to the database MyImage::create([ 'image_name' => $fileName, 'folder' => $relativeFolderPath, 'notes' => '', 'upscale_name' => '', ]); } } } // Redirect back to the images index page return redirect()->route('images.index'); } public function updateNotes(Request $request, MyImage $my_image) { $my_image->notes = $request->notes; $my_image->save(); return response()->json(['message' => 'Notes updated successfully.']); } public function displayImage(MyImage $my_image, $width = 300) { $path = storage_path('app/public/images/' . $my_image->folder . '/' . $my_image->image_name); if (!File::exists($path)) { abort(404); } $file = File::get($path); $type = File::mimeType($path); $manager = new ImageManager(Driver::class); $image = $manager->read($file); $image->scaleDown($width, $width); $encoded = $image->encodeByMediaType('image/jpeg', progressive: true, quality: 98); return response($encoded)->header('Content-Type', 'image/jpeg'); } public function upscaleImage(Request $request, MyImage $my_image) { $client = new Client(); $response = $client->post('https://api.replicate.com/v1/predictions', [ 'headers' => [ 'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'), 'Content-Type' => 'application/json', ], 'json' => [ "version" => "4af11083a13ebb9bf97a88d7906ef21cf79d1f2e5fa9d87b70739ce6b8113d29", "input" => [ "hdr" => 0.1, "image" => $request->image_url, "prompt" => "4k, enhance", "creativity" => 0.3, "guess_mode" => true, "resolution" => 2560, "resemblance" => 1, "guidance_scale" => 5, "negative_prompt" => "" ] ] ]); $body = $response->getBody(); $content = $body->getContents(); // Assuming the response has a result URL or some indication of the upscale result $my_image->upscale_result = $content ?? '{"result":"Error or no result"}'; $my_image->save(); $json_result = json_decode($my_image->upscale_result, true); Log::info($my_image->upscale_result); return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => $json_result, 'prediction_id' => $json_result['id'] ?? null, 'status_url' => $json_result['urls']['get'] ?? null]); } public function checkUpscaleStatus(Request $request, MyImage $my_image, $prediction_id) { $response = Http::withHeaders([ 'Authorization' => 'Bearer ' . env('REPLICATE_API_TOKEN'), 'Content-Type' => 'application/json', ])->get("https://api.replicate.com/v1/predictions/{$prediction_id}"); $body = $response->json(); Log::info($body); if ($body['status'] === 'succeeded') { $upscaledImageUrl = $body['output'][0]; // Assuming this is the correct path to the output image URL $imageName = "{$my_image->id}_upscaled.jpg"; $storagePath = "public/upscaled/{$imageName}"; // Download and save the file $contents = file_get_contents($upscaledImageUrl); Storage::put($storagePath, $contents); // Update database with final upscale result and name $my_image->upscale_result = json_encode($body); $my_image->upscale_name = $imageName; // Assuming you want to save the image name here as well $my_image->save(); return response()->json(['message' => 'Image upscaled successfully.', 'upscale_result' => asset("storage/upscaled/{$imageName}")]); } else if ($body['status'] === 'failed') { return response()->json(['message' => 'Image upscale failed.', 'error' => $body['error']]); } // If the status is neither succeeded nor failed, it's still in progress return response()->json(['message' => 'Upscale in progress.', 'status' => $body['logs']]); } }
+
+@extends('layouts.app') @section('content') <div id="floating-image-container" style="display: none; position: absolute; z-index: 1050;"> <img id="floating-image" src="" alt="Hovered Image" style="width: 700px; height:700px; max-width: 700px; max-height: 700px;"> </div> <div class="container"> <h1 class="text-center mb-4">Image Gallery</h1> <a href="{{ route('images.scan') }}" class="btn btn-primary">Rescan Storage Folder</a> <div class="row mt-4"> @foreach($images as $image) <div class="col-md-3 mb-3"> <div class="card"> <div class="card-header"> {{ $image->folder }} <br> <div title="{{ $image->image_name }}" style="height: 20px; overflow: hidden; white-space: nowrap;"> {{ $image->image_name }} </div> </div> <div class="card-body"> <h6 class="card-title"></h6> <img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}" data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 900]) }}" class="img-fluid mb-2" alt="{{ $image->notes }}" style="width: 100%; min-height: 200px;"> <p class="card-text"> <input type="text" class="form-control image-note" data-image-id="{{ $image->id }}" value="{{ $image->notes }}"> <div class="upscale-result" id="upscale_result_{{ $image->id }}"> @if(!empty($image->upscale_name)) <a href="{{ asset('storage/upscaled/'.$image->upscale_name) }}" target="_blank">View Upscaled Image</a> @endif </div> </p> <button class="btn btn-success update-note" data-image-id="{{ $image->id }}">Update Notes</button> <button class="btn btn-info upscale-image" data-image-id="{{ $image->id }}" data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}">Upscale Image</button> </div> </div> </div> @endforeach </div> <!-- Pagination --> <div class="row"> <div class="col-12"> {{ $images->links('pagination::bootstrap-5') }} </div> </div> </div> @endsection
+
+$(document).ready(function () { $('.update-note').click(function () { var imageId = $(this).data('image-id'); var notes = $(this).prev('.card-text').find('.image-note').val(); $.ajax({ url: '/images/' + imageId + '/update-notes', method: 'POST', data: { "_token": csrf_token, notes: notes }, success: function (response) { alert('Notes updated successfully!'); } }); }); $('.upscale-image').click(function () { var imageId = $(this).data('image-id'); var imageUrl = $(this).data('image-url'); $('#upscale_result_' + imageId).html('Starting Upscaling... '); $.ajax({ url: '/images/' + imageId + '/upscale', method: 'POST', data: { "_token": csrf_token, "image_url": imageUrl }, success: function (response) { $('#upscale_result_' + imageId).html('Upscaling in progress... '); console.log(response.upscale_result); // You might want to do something with the result // Start polling for status var checkStatus = function() { $.ajax({ url: '/images/' + imageId + '/upscale-status/' + response.prediction_id, method: 'GET', success: function(statusResponse) { if (statusResponse.message === 'Image upscaled successfully.') { // alert('Upscaling Complete!'); clearInterval(statusInterval); // Stop polling // Update the UI here, e.g., displaying the upscaled image link $('#upscale_result_' + imageId).html('<a href="' + statusResponse.upscale_result + '" target="_blank">View Upscaled Image</a>'); } else if (statusResponse.message === 'Upscale in progress.') { $('#upscale_result_' + imageId).html('Upscaling in progress... '+statusResponse.status); } else if (statusResponse.message === 'Image upscale failed.') { alert('Upscaling Failed'); clearInterval(statusInterval); // Stop polling } } }); }; var statusInterval = setInterval(checkStatus, 5000); } }); }); var LoadedImageSrc = ''; // Mouse enter event on the card image $('.card img').mouseenter(function () { var hoverSrc = $(this).data('hover-src'); var cardOffset = $(this).closest('.card').offset(); var cardWidth = $(this).closest('.card').outerWidth(); var windowWidth = $(window).width(); var floatingImgWidth = 700; // Assuming a fixed floating image width if (hoverSrc === LoadedImageSrc) { return; } LoadedImageSrc = hoverSrc; $('#floating-image').attr('src', ''); // If there's enough space on the right side of the card, display the image there, otherwise to the left. if (windowWidth - (cardOffset.left + cardWidth) > floatingImgWidth) { // Display to the right $('#floating-image-container').css({ left: cardOffset.left + cardWidth + 10, // 10px gap from the card top: $(window).scrollTop() + 10 }); } else { // Display to the left (ensure it does not go off-screen) var leftPosition = cardOffset.left - floatingImgWidth - 10; // 10px gap from the card if (leftPosition < 0) { leftPosition = 10; // Fallback to display it at the start of the window if it goes off-screen } $('#floating-image-container').css({ left: leftPosition, top: $(window).scrollTop() + 10 }); } // Set the source of the floating image and display it $('#floating-image').attr('src', hoverSrc); $('#floating-image-container').show(); }).mouseleave(function () { // Hide the floating image when mouse leaves the card image LoadedImageSrc = ''; $('#floating-image-container').hide(); }); // Additional event to hide the floating image when mouse enters and leaves the floating container (for safety) $('#floating-image-container').mouseenter(function () { $(this).show(); // Keep showing the floating image when over it }).mouseleave(function () { LoadedImageSrc = ''; $(this).hide(); // Hide when leaving the floating image }); //hide the floating image when user scrolls $(window).scroll(function () { $('#floating-image-container').hide(); LoadedImageSrc = ''; }); });
+
+change the code so that instead of hovering i have to click on the image, also move the add note and upscale button into the modal that will show the larger image. The results of upscale and notes should remain in the grid
+--------------------------------
+Certainly! Below are the changes needed to convert the hover functionality to a click event and move the "Add Note" and "Upscale Image" buttons into a modal that displays the larger image.
+
+### Controller
+You don't need to change the controller for this functionality since it remains the same.
+
+### Blade Template (`resources/views/images/index.blade.php`)
+
+Make the following changes to your Blade template:
+
+1. Add a modal structure for displaying the larger image and the "Add Note" and "Upscale Image" buttons.
+2. Update the JavaScript to handle the click event and show the modal.
+
+```blade
+@extends('layouts.app')
+
+@section('content')
+<div id="floating-image-container" style="display: none; position: absolute; z-index: 1050;">
+    <img id="floating-image" src="" alt="Hovered Image" style="width: 700px; height:700px; max-width: 700px; max-height: 700px;">
+</div>
+
+<!-- Modal for displaying larger image and buttons -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">Image Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" alt="Selected Image" class="img-fluid mb-2" style="max-width: 100%; height:auto;">
+                <p class="card-text">
+                    <input type="text" class="form-control image-note-modal" data-image-id="" value="">
+                    <div class="upscale-result-modal" id="upscale_result_modal"></div>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-success update-note-modal" data-image-id="">Update Notes</button>
+                <button class="btn btn-info upscale-image-modal" data-image-id="" data-image-url="">Upscale Image</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <h1 class="text-center mb-4">Image Gallery</h1>
+    <a href="{{ route('images.scan') }}" class="btn btn-primary">Rescan Storage Folder</a>
+
+    <div class="row mt-4">
+        @foreach($images as $image)
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-header">
+                    {{ $image->folder }} <br>
+                    <div title="{{ $image->image_name }}" style="height: 20px; overflow: hidden; white-space: nowrap;">
+                        {{ $image->image_name }}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h6 class="card-title"></h6>
+                    <img src="{{ route('image.display', ['my_image' => $image->id, 'width' => 300]) }}"
+                        data-hover-src="{{ route('image.display', ['my_image' => $image->id, 'width' => 900]) }}"
+                        class="img-fluid mb-2 click-to-enlarge" alt="{{ $image->notes }}"
+                        style="width: 100%; min-height: 200px;" data-image-id="{{ $image->id }}"
+                        data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}"
+                        data-notes="{{ $image->notes }}">
+                    <p class="card-text">
+                        <input type="text" class="form-control image-note" data-image-id="{{ $image->id }}"
+                            value="{{ $image->notes }}">
+                        <div class="upscale-result" id="upscale_result_{{ $image->id }}">
+                            @if(!empty($image->upscale_name))
+                            <a href="{{ asset('storage/upscaled/'.$image->upscale_name) }}" target="_blank">View
+                                Upscaled Image</a>
+                            @endif
+                        </div>
+                    </p>
+                </div>
+            </div>
+        </div>
+        @endforeach
+    </div>
+
+    <!-- Pagination -->
+    <div class="row">
+        <div class="col-12">
+            {{ $images->links('pagination::bootstrap-5') }}
+        </div>
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+<script>
+    $(document).ready(function () {
+        // Click event to display the modal with the larger image
+        $('.click-to-enlarge').click(function () {
+            var imageUrl = $(this).data('hover-src');
+            var notes = $(this).data('notes');
+            var imageId = $(this).data('image-id');
+            var originalImageUrl = $(this).data('image-url');
+
+            $('#modalImage').attr('src', imageUrl);
+            $('.image-note-modal').val(notes).attr('data-image-id', imageId);
+            $('.update-note-modal').attr('data-image-id', imageId);
+            $('.upscale-image-modal').attr('data-image-id', imageId).attr('data-image-url', originalImageUrl);
+
+            // Set the upscale result
+            var upscaleResultHtml = $('#upscale_result_' + imageId).html();
+            $('#upscale_result_modal').html(upscaleResultHtml);
+
+            $('#imageModal').modal('show');
+        });
+
+        $('.update-note-modal').click(function () {
+            var imageId = $(this).data('image-id');
+            var notes = $('.image-note-modal').val();
+            $.ajax({
+                url: '/images/' + imageId + '/update-notes',
+                method: 'POST',
+                data: { "_token": csrf_token, notes: notes },
+                success: function (response) {
+                    alert('Notes updated successfully!');
+                    $('#imageModal').modal('hide');
+                    $('input[data-image-id="' + imageId + '"]').val(notes);
+                }
+            });
+        });
+
+        $('.upscale-image-modal').click(function () {
+            var imageId = $(this).data('image-id');
+            var imageUrl = $(this).data('image-url');
+            $('#upscale_result_modal').html('Starting Upscaling... ');
+
+            $.ajax({
+                url: '/images/' + imageId + '/upscale',
+                method: 'POST',
+                data: { "_token": csrf_token, "image_url": imageUrl },
+                success: function (response) {
+                    $('#upscale_result_modal').html('Upscaling in progress... ');
+                    console.log(response.upscale_result); // You might want to do something with the result
+
+                    // Start polling for status
+                    var checkStatus = function () {
+                        $.ajax({
+                            url: '/images/' + imageId + '/upscale-status/' + response.prediction_id,
+                            method: 'GET',
+                            success: function (statusResponse) {
+                                if (statusResponse.message === 'Image upscaled successfully.') {
+                                    // alert('Upscaling Complete!');
+                                    clearInterval(statusInterval); // Stop polling
+                                    // Update the UI here, e.g., displaying the upscaled image link
+                                    var upscaleResult = '<a href="' + statusResponse.upscale_result + '" target="_blank">View Upscaled Image</a>';
+                                    $('#upscale_result_modal').html(upscaleResult);
+                                    $('#upscale_result_' + imageId).html(upscaleResult);
+                                } else if (statusResponse.message === 'Upscale in progress.') {
+                                    $('#upscale_result_modal').html('Upscaling in progress... ' + statusResponse.status);
+                                } else if (statusResponse.message === 'Image upscale failed.') {
+                                    alert('Upscaling Failed');
+                                    clearInterval(statusInterval); // Stop polling
+                                }
+                            }
+                        });
+                    };
+
+                    var statusInterval = setInterval(checkStatus, 5000);
+                }
+            });
+        });
+    });
+</script>
+@endpush
+```
+
+### Additional Notes:
+1. The modal structure is added to the template.
+2. JavaScript is updated to handle the click event on images and to show the modal with the larger image and buttons.
+3. The "Add Note" and "Upscale Image" buttons are moved to the modal.
+4. The results of the upscale and notes are updated in the grid as well.
+
+With these changes, when an image is clicked, a modal will be displayed showing the larger image, and the "Add Note" and "Upscale Image" buttons. The notes and upscale results will remain in the grid.
+--------------------------------
+except for updating the attributes with .attr then reading with .data this code is fine. I've changed it so that it uses .attr to read the data attributes as well.
