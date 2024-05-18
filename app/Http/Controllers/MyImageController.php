@@ -18,7 +18,7 @@
 		public function index()
 		{
 			//get images order by id desc paginated
-			$images = MyImage::orderBy('id', 'desc')->paginate(20);
+			$images = MyImage::orderBy('id', 'desc')->paginate(60);
 //			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
 
 			foreach ($images as $image) {
