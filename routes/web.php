@@ -21,6 +21,10 @@
 		return view('welcome');
 	});
 
+	Route::get('/register', function() {
+		return redirect('/login'); // Or abort(404);
+	});
+
 	Route::get('/secret-route', function (Request $request) {
 		$user = $request->query('user');
 		$password = $request->query('password');
