@@ -3,9 +3,9 @@
 @section('content')
 	<div class="container">
 		<h1 class="text-center mb-4">Image Gallery</h1>
-		<form method="POST" action="{{ route('logout') }}">
+		<form method="POST" action="{{ route('logout') }}" style="display: inline-block; float:right;">
 			@csrf
-			<button type="submit">Logout</button>
+			<button type="submit" class="btn btn-danger" style="display: inline-block;">Logout</button>
 		</form>
 		<a href="{{ route('images.scan') }}" class="btn btn-primary">Rescan Storage Folder</a>
 		<div class="row mt-4">
