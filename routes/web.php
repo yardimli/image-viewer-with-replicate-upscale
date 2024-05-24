@@ -3,7 +3,7 @@
 	use App\Http\Controllers\MyImageController;
 	use App\Http\Controllers\ProfileController;
 	use App\Models\User;
-	use http\Client\Request;
+	use Illuminate\Http\Request;
 	use Illuminate\Support\Facades\Hash;
 	use Illuminate\Support\Facades\Route;
 
