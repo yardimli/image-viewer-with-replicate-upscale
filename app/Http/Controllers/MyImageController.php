@@ -53,7 +53,7 @@
 					$query->orderBy('id', 'desc');
 			}
 
-			$images = $query->paginate(10)->appends(['folder' => $selectedFolder, 'sort' => $selectedSort]);
+			$images = $query->paginate(60)->appends(['folder' => $selectedFolder, 'sort' => $selectedSort]);
 
 
 			// Get unique folder names for the dropdown
