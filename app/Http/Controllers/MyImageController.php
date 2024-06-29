@@ -46,6 +46,9 @@
 				case 'album_filename_desc':
 					$query->orderBy('album_filename', 'desc');
 					break;
+				case 'notes_desc':
+					$query->orderBy('notes', 'desc');
+					break;
 				default:
 					$query->orderBy('id', 'desc');
 			}

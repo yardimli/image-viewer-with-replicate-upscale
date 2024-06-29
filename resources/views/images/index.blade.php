@@ -23,7 +23,9 @@
 					<select name="sort" class="form-select" onchange="this.form.submit()">
 						<option value="" {{ $selectedSort == '' ? 'selected' : '' }}>No Sort</option>
 						<option value="album_filename_desc" {{ $selectedSort == 'album_filename_desc' ? 'selected' : '' }}>Album Filename</option>
-
+						
+						<option value="notes_desc" {{ $selectedSort == 'notes_desc' ? 'selected' : '' }}>Notes</option>
+						
 						<option value="filename_asc" {{ $selectedSort == 'filename_asc' ? 'selected' : '' }}>Filename Ascending</option>
 						<option value="filename_desc" {{ $selectedSort == 'filename_desc' ? 'selected' : '' }}>Filename Descending</option>
 						
