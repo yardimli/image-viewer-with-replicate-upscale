@@ -12,14 +12,49 @@
 	use Intervention\Image\ImageManager;
 	use Intervention\Image\Laravel\Facades\Image;
 	use GuzzleHttp\Client;
+	use Symfony\Component\Console\Output\ConsoleOutput;
 
 	class MyImageController extends Controller
 	{
-		public function index()
+		public function index(Request $request)
 		{
-			//get images order by id desc paginated
-			$images = MyImage::orderBy('id', 'desc')->paginate(60);
-//			$images = MyImage::paginate(20); // Adjust the number of items per page as needed
+			$output = new ConsoleOutput();
+			$output->writeln("<error>oh no!</error>");
+
+			$selectedFolder = $request->input('folder', 'all');
+			$selectedSort = $request->input('sort', 'filename_asc');
+
+			$query = MyImage::query();
+
+			if ($selectedFolder && $selectedFolder !== 'all') {
+				$query->where('folder', $selectedFolder);
+			}
+
+			switch ($selectedSort) {
+				case 'filename_asc':
+					$query->orderBy('image_name', 'asc');
+					break;
+				case 'filename_desc':
+					$query->orderBy('image_name', 'desc');
+					break;
+				case 'id_asc':
+					$query->orderBy('id', 'asc');
+					break;
+				case 'id_desc':
+					$query->orderBy('id', 'desc');
+					break;
+				case 'album_filename_desc':
+					$query->orderBy('album_filename', 'desc');
+					break;
+				default:
+					$query->orderBy('id', 'desc');
+			}
+
+			$images = $query->paginate(10)->appends(['folder' => $selectedFolder, 'sort' => $selectedSort]);
+
+
+			// Get unique folder names for the dropdown
+			$folders = MyImage::distinct()->pluck('folder');
 
 			foreach ($images as $image) {
 				// Check if upscale_name is null but upscale_result has a prediction ID
@@ -60,7 +95,7 @@
 				}
 			}
 
-			return view('images.index', compact('images'));
+			return view('images.index', compact('images', 'folders', 'selectedFolder', 'selectedSort'));
 		}
 
 		public function scanFolder()
@@ -97,9 +132,16 @@
 		public function updateNotes(Request $request, MyImage $my_image)
 		{
 			$my_image->notes = $request->notes;
+			$my_image->album_filename = $request->album_filename;
+			$my_image->image_keywords = $request->image_keywords;
 			$my_image->save();
 
-			return response()->json(['message' => 'Notes updated successfully.']);
+			return response()->json([
+				'message' => 'Image details updated successfully.',
+				'notes' => $my_image->notes,
+				'album_filename' => $my_image->album_filename,
+				'image_keywords' => $my_image->image_keywords
+			]);
 		}
 
 		public function displayImage(MyImage $my_image, $width = 300)

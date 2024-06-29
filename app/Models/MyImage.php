@@ -9,5 +9,13 @@
 	{
 		use HasFactory;
 
-		protected $fillable = ['image_name', 'folder', 'notes', 'upscale_name', 'upscale_result'];
+		protected $fillable = [
+			'image_name',
+			'folder',
+			'notes',
+			'upscale_name',
+			'upscale_result',
+			'album_filename',
+			'image_keywords'
+		];
 	}

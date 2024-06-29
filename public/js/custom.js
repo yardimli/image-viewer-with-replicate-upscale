@@ -26,10 +26,17 @@ $(document).ready(function () {
 	$('#imageModal').on('click', '.update-note-modal', function () {
 		var imageId = $(this).attr('data-image-id');
 		var notes = $('.image-note-modal').val();
+		var albumFilename = $('.album-filename-modal').val();
+		var imageKeywords = $('.image-keywords-modal').val();
 		$.ajax({
 			url: '/images/' + imageId + '/update-notes',
 			method: 'POST',
-			data: {"_token": csrf_token, notes: notes},
+			data: {
+				"_token": csrf_token,
+				notes: notes,
+				album_filename: albumFilename,
+				image_keywords: imageKeywords
+			},
 			success: function (response) {
 				$("#add-note-results").html('Notes updated successfully!');
 				$('#upscale_notes_' + imageId + '').html(notes);
