@@ -61,8 +61,8 @@
 							     style="width: 100%; min-height: 200px;" data-image-id="{{ $image->id }}"
 							     data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}"
 							     data-notes="{{ $image->notes }}"
-							     data-album-filename="{{$images->album_filename}}"
-							     data-image-keywords="{{$images->image_keywords}}">
+							     data-album-filename="{{$image->album_filename}}"
+							     data-image-keywords="{{$image->image_keywords}}">
 							
 							<p class="card-text">
 							<div class="upscale-result" id="upscale_notes_{{ $image->id }}">
