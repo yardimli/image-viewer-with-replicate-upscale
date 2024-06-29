@@ -2,14 +2,17 @@ $(document).ready(function () {
 	$('.click-to-enlarge').click(function () {
 		var imageUrl = $(this).attr('data-hover-src');
 		var notes = $(this).attr('data-notes');
+		var albumFilename = $(this).attr('data-album-filename');
+		var imageKeywords = $(this).attr('data-image-keywords');
 		var imageId = $(this).attr('data-image-id');
 		var originalImageUrl = $(this).attr('data-image-url');
 		
 		console.log(imageUrl, notes, imageId, originalImageUrl);
 		
 		$('#modalImage').attr('src', imageUrl);
-		$('.image-note-modal').val(notes);
-		$('.image-note-modal').attr('data-image-id', imageId);
+		$('.update-note-text').val(notes);
+		$('.album-filename-text').val(albumFilename);
+		$('.image-keywords-text').val(imageKeywords);
 		
 		$('.update-note-modal').attr('data-image-id', imageId);
 		$('.upscale-image-modal').attr('data-image-id', imageId)
@@ -25,9 +28,9 @@ $(document).ready(function () {
 	
 	$('#imageModal').on('click', '.update-note-modal', function () {
 		var imageId = $(this).attr('data-image-id');
-		var notes = $('.image-note-modal').val();
-		var albumFilename = $('.album-filename-modal').val();
-		var imageKeywords = $('.image-keywords-modal').val();
+		var notes = $('.update-note-text').val();
+		var albumFilename = $('.album-filename-text').val();
+		var imageKeywords = $('.image-keywords-text').val();
 		$.ajax({
 			url: '/images/' + imageId + '/update-notes',
 			method: 'POST',

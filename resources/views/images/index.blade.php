@@ -60,7 +60,9 @@
 							     class="img-fluid mb-2 click-to-enlarge" alt="{{ $image->notes }}"
 							     style="width: 100%; min-height: 200px;" data-image-id="{{ $image->id }}"
 							     data-image-url="{{ env('APP_URL') . '/' . ('storage/images/'.$image->folder.'/'.$image->image_name) }}"
-							     data-notes="{{ $image->notes }}">
+							     data-notes="{{ $image->notes }}"
+							     data-album-filename="{{$images->album_filename}}"
+							     data-image-keywords="{{$images->image_keywords}}">
 							
 							<p class="card-text">
 							<div class="upscale-result" id="upscale_notes_{{ $image->id }}">
@@ -105,9 +107,9 @@
 					<div class="upscale-result-modal" id="upscale_result_modal"></div>
 				</div>
 				<div class="modal-footer" style="align-items: start; justify-content: normal;">
-					<input type="text" class="form-control image-note-modal" data-image-id="" value="" style="max-width: 300px; display: inline-block;" placeholder="notes">
-					<input type="text" class="form-control album-filename-modal" data-image-id="" value="" placeholder="Album Filename" style="max-width: 300px; display: inline-block;">
-					<input type="text" class="form-control image-keywords-modal" data-image-id="" value="" placeholder="Image Keywords" style="max-width: 300px; display: inline-block;">
+					<input type="text" class="form-control update-note-text" value="" style="max-width: 300px; display: inline-block;" placeholder="notes">
+					<input type="text" class="form-control album-filename-text" value="" placeholder="Album Filename" style="max-width: 300px; display: inline-block;">
+					<input type="text" class="form-control image-keywords-text" value="" placeholder="Image Keywords" style="max-width: 300px; display: inline-block;">
 					<button class="btn btn-success update-note-modal" data-image-id="">Update Notes</button>
 					<button class="btn btn-info upscale-image-modal" data-image-id="" data-image-url="">Upscale Image</button>
 				</div>
